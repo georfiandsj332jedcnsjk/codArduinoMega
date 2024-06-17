@@ -94,6 +94,16 @@ void trimiterelocuri(int vector[]) {
   delay(100);
 }
 
+int calculLocuriLibere() {
+  int locuriLibere = 0;
+  for (int i = 0; i < 4; i++) {
+    if (parcare[i] == 0) {
+      locuriLibere++;
+    }
+  }
+  return locuriLibere;
+}
+
 void loop() {
   float distance1 = sensor1.read();
   float distance2 = sensor2.read();
@@ -141,8 +151,13 @@ void loop() {
   Serial.print(" ");
   Serial.println(distanceOUT2);
 
+  // Calculați numărul de locuri libere și actualizați afișajul LCD
+  int locuriLibere = calculLocuriLibere();
+  updateLCD(locuriLibere);
+  trimiterelocuri(parcare);
+
   // Pentru poarta de intrare
-  if (distanceIN1 <= 6 && distanceIN2 > 6 && nrlocurilibere >= 1) {
+  if (distanceIN1 <= 6 && distanceIN2 > 6 && locuriLibere > 0) {
     ridicarebarieraintrare();
     conditieintrare1 = 1;
     delay(100);
@@ -184,10 +199,6 @@ void loop() {
     conditieiesire2 = 0;
     Serial.println(nrlocurilibere);
   }
-
-  // Actualizați afișajul LCD cu numărul de locuri libere
-  updateLCD(nrlocurilibere);
-  trimiterelocuri(parcare);
 }
 
 int calculDistantaIN1() {
