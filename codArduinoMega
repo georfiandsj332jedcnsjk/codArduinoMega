@@ -1,0 +1,255 @@
+#include <Servo.h>
+#include <SoftwareSerial.h>
+#include <LiquidCrystal_I2C.h>
+#include <Wire.h>
+#include <Ultrasonic.h>
+
+#define echoPinIN1 48
+#define trigPinIN1 49
+#define echoPinIN2 46
+#define trigPinIN2 47
+#define echoPinOUT1 44
+#define trigPinOUT1 45
+#define echoPinOUT2 42
+#define trigPinOUT2 43
+
+Ultrasonic sensor1(3, 2);  // Trig pin, Echo pin pentru senzorul 1
+Ultrasonic sensor2(5, 4);  // Trig pin, Echo pin pentru senzorul 2
+Ultrasonic sensor3(7, 6);  // Trig pin, Echo pin pentru senzorul 3
+Ultrasonic sensor4(9, 8);  // Trig pin, Echo pin pentru senzorul 4
+
+Servo servo_intrare;
+Servo servo_iesire;
+LiquidCrystal_I2C lcd(0x27, 16, 2); // Inițializați LCD-ul I2C cu adresa 0x27 și dimensiunile 16x2
+SoftwareSerial espSerial(15, 14);
+
+String str;
+long durationIN1;
+int distanceIN1;
+long durationIN2;
+int distanceIN2;
+long durationOUT1;
+int distanceOUT1;
+long durationOUT2;
+int distanceOUT2;
+int nrlocurilibere = 4;
+int conditieintrare1 = 0, conditieintrare2 = 0, conditieiesire1 = 0, conditieiesire2 = 0;
+int parcare[4] = {1, 1, 1, 1};
+
+void setup() {
+  servo_intrare.attach(12);
+  servo_iesire.attach(13);
+  pinMode(trigPinIN1, OUTPUT);
+  pinMode(echoPinIN1, INPUT);
+  pinMode(trigPinIN2, OUTPUT);
+  pinMode(echoPinIN2, INPUT);
+  pinMode(trigPinOUT1, OUTPUT);
+  pinMode(echoPinOUT1, INPUT);
+  pinMode(trigPinOUT2, OUTPUT);
+  pinMode(echoPinOUT2, INPUT);
+  Serial.begin(9600);
+
+  lcd.init(); // Inițializați LCD-ul
+  lcd.backlight(); // Porniți iluminarea din spate a LCD-ului
+  delay(1000);
+
+  // Test servos
+  servo_intrare.write(0);
+  delay(500);
+  servo_intrare.write(90);
+  delay(500);
+  servo_iesire.write(0);
+  delay(500);
+  servo_iesire.write(90);
+  delay(500);
+}
+
+void updateLCD(int numSpaces) {
+  lcd.clear(); // Ștergeți afișajul
+  if (numSpaces == 0) {
+    lcd.setCursor(0, 0);
+    lcd.print("Parcarea este");
+    lcd.setCursor(0, 1);
+    lcd.print("plina");
+  } else {
+    lcd.setCursor(0, 0);
+    lcd.print("Locuri libere:");
+    lcd.setCursor(0, 1);
+    lcd.print(numSpaces);
+  }
+}
+
+void trimiterelocuri(int vector[]) {
+  espSerial.begin(57600);
+  Serial.flush();
+  delay(10);
+  for (int i = 0; i < 4; i++) {
+    espSerial.print(vector[i]);
+    delay(10);
+    espSerial.print(" ");
+    delay(10);
+  }
+  Serial.flush();
+  espSerial.end();
+  delay(100);
+}
+
+void loop() {
+  float distance1 = sensor1.read();
+  float distance2 = sensor2.read();
+  float distance3 = sensor3.read();
+  float distance4 = sensor4.read();
+
+  distanceIN1 = calculDistantaIN1();
+  distanceIN2 = calculDistantaIN2();
+  distanceOUT1 = calculDistantaOUT1();
+  distanceOUT2 = calculDistantaOUT2();
+
+  if (distance1 < 10) {
+    parcare[0] = 1;
+  } else {
+    parcare[0] = 0;
+  }
+
+  if (distance2 < 10) {
+    parcare[1] = 1;
+  } else {
+    parcare[1] = 0;
+  }
+
+  if (distance3 < 10) {
+    parcare[2] = 1;
+  } else {
+    parcare[2] = 0;
+  }
+
+  if (distance4 < 10) {
+    parcare[3] = 1;
+  } else {
+    parcare[3] = 0;
+  }
+
+  delay(1000);
+
+  // Debugging output
+  Serial.print("Distante Intrare: ");
+  Serial.print(distanceIN1);
+  Serial.print(" ");
+  Serial.println(distanceIN2);
+  Serial.print("Distante Iesire: ");
+  Serial.print(distanceOUT1);
+  Serial.print(" ");
+  Serial.println(distanceOUT2);
+
+  // Pentru poarta de intrare
+  if (distanceIN1 <= 6 && distanceIN2 > 6 && nrlocurilibere >= 1) {
+    ridicarebarieraintrare();
+    conditieintrare1 = 1;
+    delay(100);
+  }
+
+  if (distanceIN1 > 6 && distanceIN2 <= 6) {
+    coborarebarieraintrare();
+    if (conditieintrare1 == 1)
+      conditieintrare2 = 1;
+    delay(100);
+  }
+
+  if (conditieintrare1 == 1 && conditieintrare2 == 1) {
+    nrlocurilibere = nrlocurilibere - 1;
+    conditieintrare1 = 0;
+    conditieintrare2 = 0;
+    Serial.println(nrlocurilibere);
+  }
+
+  // Pentru poarta de la iesire
+  if (distanceOUT1 <= 6 && distanceOUT2 > 6) {
+    ridicarebarieraiesire();
+    conditieiesire1 = 1;
+    delay(100);
+  }
+
+  if (distanceOUT1 > 6 && distanceOUT2 <= 6) {
+    coborarebarieraiesire();
+    if (conditieiesire1 == 1)
+      conditieiesire2 = 1;
+    delay(100);
+  }
+
+  if (conditieiesire1 == 1 && conditieiesire2 == 1) {
+    nrlocurilibere = nrlocurilibere + 1;
+    if (nrlocurilibere > 4)
+      nrlocurilibere = 4;
+    conditieiesire1 = 0;
+    conditieiesire2 = 0;
+    Serial.println(nrlocurilibere);
+  }
+
+  // Actualizați afișajul LCD cu numărul de locuri libere
+  updateLCD(nrlocurilibere);
+  trimiterelocuri(parcare);
+}
+
+int calculDistantaIN1() {
+  digitalWrite(trigPinIN1, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPinIN1, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPinIN1, LOW);
+  durationIN1 = pulseIn(echoPinIN1, HIGH);
+  distanceIN1 = durationIN1 * 0.034 / 2;
+  return distanceIN1;
+}
+
+int calculDistantaIN2() {
+  digitalWrite(trigPinIN2, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPinIN2, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPinIN2, LOW);
+  durationIN2 = pulseIn(echoPinIN2, HIGH);
+  distanceIN2 = durationIN2 * 0.034 / 2;
+  return distanceIN2;
+}
+
+int calculDistantaOUT1() {
+  digitalWrite(trigPinOUT1, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPinOUT1, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPinOUT1, LOW);
+  durationOUT1 = pulseIn(echoPinOUT1, HIGH);
+  distanceOUT1 = durationOUT1 * 0.034 / 2;
+  return distanceOUT1;
+}
+
+int calculDistantaOUT2() {
+  digitalWrite(trigPinOUT2, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPinOUT2, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPinOUT2, LOW);
+  durationOUT2 = pulseIn(echoPinOUT2, HIGH);
+  distanceOUT2 = durationOUT2 * 0.034 / 2;
+  return distanceOUT2;
+}
+
+void ridicarebarieraintrare() {
+  servo_intrare.write(180);
+  Serial.println("Bariera de intrare ridicata");
+}
+
+void coborarebarieraintrare() {
+  servo_intrare.write(90);
+  Serial.println("Bariera de intrare coborata");
+}
+
+void ridicarebarieraiesire() {
+  servo_iesire.write(180);
+  Serial.println("Bariera de iesire ridicata");
+}
+
+void coborarebarieraiesire() {
+  servo_iesire.write(90);
+  Serial.println("Bariera de iesire coborata");
+}
